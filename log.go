@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -12,7 +13,7 @@ const EnvLogFile = "PACKER_LOG_PATH" //Set to a file
 
 // logOutput determines where we should send logs (if anywhere).
 func logOutput() (logOutput io.Writer, err error) {
-	logOutput = nil
+	logOutput = ioutil.Discard
 	if os.Getenv(EnvLog) != "" {
 		logOutput = os.Stderr
 
@@ -24,6 +25,6 @@ func logOutput() (logOutput io.Writer, err error) {
 			}
 		}
 	}
-
+	//fmt.Println("[LOG-HACK] output:", logOutput)
 	return
 }
