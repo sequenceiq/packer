@@ -31,13 +31,19 @@ func realMain() int {
 
 	if !panicwrap.Wrapped(&wrapConfig) {
 		// Determine where logs should go in general (requested by the user)
-		logWriter, err := logOutput()
+		l, err := logOutput()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Couldn't setup log output: %s", err)
 			return 1
 		}
-		if logWriter == nil {
-			logWriter = ioutil.Discard
+
+		var logWriter io.Writer
+		if l == ioutil.Discard {
+			logWriter = os.Stderr
+		} else if l == os.Stderr {
+			logWriter = os.Stderr
+		} else {
+			logWriter = io.MultiWriter(l, os.Stderr)
 		}
 
 		// We always send logs to a temporary file that we use in case
@@ -51,8 +57,8 @@ func realMain() int {
 		defer logTempFile.Close()
 
 		// Tell the logger to log to this file
-		os.Setenv(EnvLog, "")
-		os.Setenv(EnvLogFile, "")
+		//os.Setenv(EnvLog, "")
+		//os.Setenv(EnvLogFile, "")
 
 		// Setup the prefixed readers that send data properly to
 		// stdout/stderr.
@@ -98,7 +104,8 @@ func wrappedMain() int {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	}
 
-	log.SetOutput(os.Stderr)
+	l, _ := logOutput()
+	log.SetOutput(l)
 
 	log.Printf(
 		"[INFO] Packer version: %s %s %s",
