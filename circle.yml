@@ -14,7 +14,7 @@ dependencies:
 
   override:
     - git config --global user.email "you@example.com" &&  git config --global user.name "Your Name"
-    - cd $GOPATH/src/github.com/mitchellh/packer && curl -L https://github.com/mitchellh/packer/pull/1917.patch | git am --signoff && make dev
+    - cd $GOPATH/src/github.com/mitchellh/packer && make dev
 
   post:
     - tar -czvf $CIRCLE_ARTIFACTS/packer.tgz -C  $GOPATH/bin $(find $GOPATH/bin -name packer\* -printf '%P ')
