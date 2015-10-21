@@ -29,6 +29,8 @@ type Config struct {
 	awscommon.BlockDevices `mapstructure:",squash"`
 	awscommon.RunConfig    `mapstructure:",squash"`
 
+	Mock string `mapstructure:"mock"`
+
 	ctx interpolate.Context
 }
 
@@ -47,18 +49,23 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 		return nil, err
 	}
 
-	// Accumulate any errors
-	var errs *packer.MultiError
-	errs = packer.MultiErrorAppend(errs, b.config.AccessConfig.Prepare(&b.config.ctx)...)
-	errs = packer.MultiErrorAppend(errs, b.config.BlockDevices.Prepare(&b.config.ctx)...)
-	errs = packer.MultiErrorAppend(errs, b.config.AMIConfig.Prepare(&b.config.ctx)...)
-	errs = packer.MultiErrorAppend(errs, b.config.RunConfig.Prepare(&b.config.ctx)...)
+	if b.config.Mock != "" {
+		log.Println("#####################################")
+		log.Println(" MOCKED AWS BUILDER")
+	} else {
+		// Accumulate any errors
+		var errs *packer.MultiError
+		errs = packer.MultiErrorAppend(errs, b.config.AccessConfig.Prepare(&b.config.ctx)...)
+		errs = packer.MultiErrorAppend(errs, b.config.BlockDevices.Prepare(&b.config.ctx)...)
+		errs = packer.MultiErrorAppend(errs, b.config.AMIConfig.Prepare(&b.config.ctx)...)
+		errs = packer.MultiErrorAppend(errs, b.config.RunConfig.Prepare(&b.config.ctx)...)
 
-	if errs != nil && len(errs.Errors) > 0 {
-		return nil, errs
+		if errs != nil && len(errs.Errors) > 0 {
+			return nil, errs
+		}
+
+		log.Println(common.ScrubConfig(b.config, b.config.AccessKey, b.config.SecretKey))
 	}
-
-	log.Println(common.ScrubConfig(b.config, b.config.AccessKey, b.config.SecretKey))
 	return nil, nil
 }
 
@@ -77,92 +84,119 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	state.Put("hook", hook)
 	state.Put("ui", ui)
 
-	// Build the steps
-	steps := []multistep.Step{
-		&awscommon.StepPreValidate{
-			DestAmiName:     b.config.AMIName,
-			ForceDeregister: b.config.AMIForceDeregister,
-		},
-		&awscommon.StepSourceAMIInfo{
-			SourceAmi:          b.config.SourceAmi,
-			EnhancedNetworking: b.config.AMIEnhancedNetworking,
-		},
-		&awscommon.StepKeyPair{
-			Debug:                b.config.PackerDebug,
-			DebugKeyPath:         fmt.Sprintf("ec2_%s.pem", b.config.PackerBuildName),
-			KeyPairName:          b.config.SSHKeyPairName,
-			TemporaryKeyPairName: b.config.TemporaryKeyPairName,
-			PrivateKeyFile:       b.config.RunConfig.Comm.SSHPrivateKey,
-		},
-		&awscommon.StepSecurityGroup{
-			SecurityGroupIds: b.config.SecurityGroupIds,
-			CommConfig:       &b.config.RunConfig.Comm,
-			VpcId:            b.config.VpcId,
-		},
-		&stepCleanupVolumes{
-			BlockDevices: b.config.BlockDevices,
-		},
-		&awscommon.StepRunSourceInstance{
-			Debug:                    b.config.PackerDebug,
-			ExpectedRootDevice:       "ebs",
-			SpotPrice:                b.config.SpotPrice,
-			SpotPriceProduct:         b.config.SpotPriceAutoProduct,
-			InstanceType:             b.config.InstanceType,
-			UserData:                 b.config.UserData,
-			UserDataFile:             b.config.UserDataFile,
-			SourceAMI:                b.config.SourceAmi,
-			IamInstanceProfile:       b.config.IamInstanceProfile,
-			SubnetId:                 b.config.SubnetId,
-			AssociatePublicIpAddress: b.config.AssociatePublicIpAddress,
-			AvailabilityZone:         b.config.AvailabilityZone,
-			BlockDevices:             b.config.BlockDevices,
-			Tags:                     b.config.RunTags,
-		},
-		&awscommon.StepGetPassword{
-			Debug:   b.config.PackerDebug,
-			Comm:    &b.config.RunConfig.Comm,
-			Timeout: b.config.WindowsPasswordTimeout,
-		},
-		&communicator.StepConnect{
-			Config: &b.config.RunConfig.Comm,
-			Host: awscommon.SSHHost(
-				ec2conn,
-				b.config.SSHPrivateIp),
-			SSHConfig: awscommon.SSHConfig(
-				b.config.RunConfig.Comm.SSHUsername),
-		},
-		&common.StepProvision{},
-		&stepStopInstance{SpotPrice: b.config.SpotPrice},
-		// TODO(mitchellh): verify works with spots
-		&stepModifyInstance{},
-		&awscommon.StepDeregisterAMI{
-			ForceDeregister: b.config.AMIForceDeregister,
-			AMIName:         b.config.AMIName,
-		},
-		&stepCreateAMI{},
-		&awscommon.StepAMIRegionCopy{
-			AccessConfig: &b.config.AccessConfig,
-			Regions:      b.config.AMIRegions,
-			Name:         b.config.AMIName,
-		},
-		&awscommon.StepModifyAMIAttributes{
-			Description: b.config.AMIDescription,
-			Users:       b.config.AMIUsers,
-			Groups:      b.config.AMIGroups,
-		},
-		&awscommon.StepCreateTags{
-			Tags: b.config.AMITags,
-		},
-	}
+	ui.Say(fmt.Sprintf("MOCK checking mock config: %s", b.config.Mock))
 
-	// Run!
-	if b.config.PackerDebug {
-		b.runner = &multistep.DebugRunner{
-			Steps:   steps,
-			PauseFn: common.MultistepDebugFn(ui),
+	if b.config.Mock != "" {
+		ui.Say("MOCKING AWS ...")
+
+		// Build the steps
+		steps := []multistep.Step{
+			&stepCreateAMIFake{
+				AmiRegions: b.config.AMIRegions,
+				AmiName:    b.config.AMIName,
+				Region:     b.config.RawRegion,
+			},
 		}
+
+		// Run!
+		if b.config.PackerDebug {
+			b.runner = &multistep.DebugRunner{
+				Steps:   steps,
+				PauseFn: common.MultistepDebugFn(ui),
+			}
+		} else {
+			b.runner = &multistep.BasicRunner{Steps: steps}
+		}
+
 	} else {
-		b.runner = &multistep.BasicRunner{Steps: steps}
+
+		// Build the steps
+		steps := []multistep.Step{
+			&awscommon.StepPreValidate{
+				DestAmiName:     b.config.AMIName,
+				ForceDeregister: b.config.AMIForceDeregister,
+			},
+			&awscommon.StepSourceAMIInfo{
+				SourceAmi:          b.config.SourceAmi,
+				EnhancedNetworking: b.config.AMIEnhancedNetworking,
+			},
+			&awscommon.StepKeyPair{
+				Debug:                b.config.PackerDebug,
+				DebugKeyPath:         fmt.Sprintf("ec2_%s.pem", b.config.PackerBuildName),
+				KeyPairName:          b.config.SSHKeyPairName,
+				TemporaryKeyPairName: b.config.TemporaryKeyPairName,
+				PrivateKeyFile:       b.config.RunConfig.Comm.SSHPrivateKey,
+			},
+			&awscommon.StepSecurityGroup{
+				SecurityGroupIds: b.config.SecurityGroupIds,
+				CommConfig:       &b.config.RunConfig.Comm,
+				VpcId:            b.config.VpcId,
+			},
+			&stepCleanupVolumes{
+				BlockDevices: b.config.BlockDevices,
+			},
+			&awscommon.StepRunSourceInstance{
+				Debug:                    b.config.PackerDebug,
+				ExpectedRootDevice:       "ebs",
+				SpotPrice:                b.config.SpotPrice,
+				SpotPriceProduct:         b.config.SpotPriceAutoProduct,
+				InstanceType:             b.config.InstanceType,
+				UserData:                 b.config.UserData,
+				UserDataFile:             b.config.UserDataFile,
+				SourceAMI:                b.config.SourceAmi,
+				IamInstanceProfile:       b.config.IamInstanceProfile,
+				SubnetId:                 b.config.SubnetId,
+				AssociatePublicIpAddress: b.config.AssociatePublicIpAddress,
+				AvailabilityZone:         b.config.AvailabilityZone,
+				BlockDevices:             b.config.BlockDevices,
+				Tags:                     b.config.RunTags,
+			},
+			&awscommon.StepGetPassword{
+				Debug:   b.config.PackerDebug,
+				Comm:    &b.config.RunConfig.Comm,
+				Timeout: b.config.WindowsPasswordTimeout,
+			},
+			&communicator.StepConnect{
+				Config: &b.config.RunConfig.Comm,
+				Host: awscommon.SSHHost(
+					ec2conn,
+					b.config.SSHPrivateIp),
+				SSHConfig: awscommon.SSHConfig(
+					b.config.RunConfig.Comm.SSHUsername),
+			},
+			&common.StepProvision{},
+			&stepStopInstance{SpotPrice: b.config.SpotPrice},
+			// TODO(mitchellh): verify works with spots
+			&stepModifyInstance{},
+			&awscommon.StepDeregisterAMI{
+				ForceDeregister: b.config.AMIForceDeregister,
+				AMIName:         b.config.AMIName,
+			},
+			&stepCreateAMI{},
+			&awscommon.StepAMIRegionCopy{
+				AccessConfig: &b.config.AccessConfig,
+				Regions:      b.config.AMIRegions,
+				Name:         b.config.AMIName,
+			},
+			&awscommon.StepModifyAMIAttributes{
+				Description: b.config.AMIDescription,
+				Users:       b.config.AMIUsers,
+				Groups:      b.config.AMIGroups,
+			},
+			&awscommon.StepCreateTags{
+				Tags: b.config.AMITags,
+			},
+		}
+
+		// Run!
+		if b.config.PackerDebug {
+			b.runner = &multistep.DebugRunner{
+				Steps:   steps,
+				PauseFn: common.MultistepDebugFn(ui),
+			}
+		} else {
+			b.runner = &multistep.BasicRunner{Steps: steps}
+		}
 	}
 
 	b.runner.Run(state)
