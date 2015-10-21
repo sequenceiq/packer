@@ -38,11 +38,28 @@ dev: deps
 generate: deps
 	go generate ./...
 
-build-mock:
-	go build -o release/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
-install-mock: build-mock
-	cp release/$(MOCK_BINARY_NAME) ~/.packer.d/plugins/
+OSNAME=$(shell uname)
+MOCKVERSION=$(shell go build -o v .&& ./v --version; rm v)
 
+build-mock:
+	rm -rf build
+	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
+	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
+
+install-mock: build-mock
+	cp build/$(OSNAME)/$(MOCK_BINARY_NAME) ~/.packer.d/plugins/$(MOCK_BINARY_NAME)
+
+gh-release: #build-mock
+	rm -rf release; mkdir -p release
+
+	#cp build/Darwin/$(MOCK_BINARY_NAME) release/$(MOCK_BINARY_NAME)-Darwin
+	#cp build/Linux/$(MOCK_BINARY_NAME) release/$(MOCK_BINARY_NAME)-Linux
+
+	tar czvf release/$(MOCK_BINARY_NAME)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME)
+	tar czvf release/$(MOCK_BINARY_NAME)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME)
+
+	gh-release create sequenceiq/packer $(MOCKVERSION)
+	
 test: deps
 	go test $(TEST) $(TESTARGS) -timeout=15s | tee packer-test.log
 	@go vet 2>/dev/null ; if [ $$? -eq 3 ]; then \
