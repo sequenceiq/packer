@@ -4,6 +4,8 @@ GITSHA:=$(shell git rev-parse HEAD)
 # Get the current local branch name from git (if we can, this may be blank)
 GITBRANCH:=$(shell git symbolic-ref --short HEAD 2>/dev/null)
 
+MOCK_BINARY_NAME=packer-builder-amazon-ebs-mock
+
 default: test dev
 
 ci: deps test
@@ -35,6 +37,11 @@ dev: deps
 # source files.
 generate: deps
 	go generate ./...
+
+build-mock:
+	go build -o release/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
+install-mock: build-mock
+	cp release/$(MOCK_BINARY_NAME) ~/.packer.d/plugins/
 
 test: deps
 	go test $(TEST) $(TESTARGS) -timeout=15s | tee packer-test.log
