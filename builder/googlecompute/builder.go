@@ -5,6 +5,7 @@ package googlecompute
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/common"
@@ -19,6 +20,17 @@ const BuilderId = "packer.googlecompute"
 type Builder struct {
 	config *Config
 	runner multistep.Runner
+}
+
+func (b *Builder) isMocking() bool {
+	mocking := b.config.PackerUserVars["mock"] == "true"
+
+	if strings.Contains(b.config.PackerBuilderType, "mock") {
+		mocking = b.config.PackerUserVars["mock"] != "false"
+	}
+
+	log.Println("isMocking(): ", mocking)
+	return mocking
 }
 
 // Prepare processes the build configuration parameters.
@@ -48,27 +60,36 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	state.Put("hook", hook)
 	state.Put("ui", ui)
 
-	// Build the steps.
-	steps := []multistep.Step{
-		new(StepCheckExistingImage),
-		&StepCreateSSHKey{
-			Debug:        b.config.PackerDebug,
-			DebugKeyPath: fmt.Sprintf("gce_%s.pem", b.config.PackerBuildName),
-		},
-		&StepCreateInstance{
-			Debug: b.config.PackerDebug,
-		},
-		&StepInstanceInfo{
-			Debug: b.config.PackerDebug,
-		},
-		&communicator.StepConnect{
-			Config:    &b.config.Comm,
-			Host:      commHost,
-			SSHConfig: sshConfig,
-		},
-		new(common.StepProvision),
-		new(StepTeardownInstance),
-		new(StepCreateImage),
+	var steps []multistep.Step
+	if b.isMocking() {
+		log.Println(" MOCKED GOOGLE BUILDER ...")
+		steps = []multistep.Step{
+			new(StepCreateImageMock),
+		}
+	} else {
+
+		// Build the steps.
+		steps = []multistep.Step{
+			new(StepCheckExistingImage),
+			&StepCreateSSHKey{
+				Debug:        b.config.PackerDebug,
+				DebugKeyPath: fmt.Sprintf("gce_%s.pem", b.config.PackerBuildName),
+			},
+			&StepCreateInstance{
+				Debug: b.config.PackerDebug,
+			},
+			&StepInstanceInfo{
+				Debug: b.config.PackerDebug,
+			},
+			&communicator.StepConnect{
+				Config:    &b.config.Comm,
+				Host:      commHost,
+				SSHConfig: sshConfig,
+			},
+			new(common.StepProvision),
+			new(StepTeardownInstance),
+			new(StepCreateImage),
+		}
 	}
 
 	// Run the steps.

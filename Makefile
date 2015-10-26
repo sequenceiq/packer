@@ -4,7 +4,8 @@ GITSHA:=$(shell git rev-parse HEAD)
 # Get the current local branch name from git (if we can, this may be blank)
 GITBRANCH:=$(shell git symbolic-ref --short HEAD 2>/dev/null)
 
-MOCK_BINARY_NAME=packer-builder-amazon-ebsmock
+MOCK_BINARY_NAME_AWS=packer-builder-amazon-ebs
+MOCK_BINARY_NAME_GCE=packer-builder-googlecompute
 
 default: test dev
 
@@ -41,23 +42,28 @@ generate: deps
 OSNAME=$(shell uname)
 MOCKVERSION=$(shell go build -o v .&& ./v --version; rm v)
 
-build-mock:
-	rm -rf build
-	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
-	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME)  plugin/builder-amazon-ebs/main.go
+build-mock-aws:
+	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME_AWS)  plugin/builder-amazon-ebs/main.go
+	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME_AWS)  plugin/builder-amazon-ebs/main.go
+
+build-mock-gce:
+	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME_GCE)  plugin/builder-googlecompute/main.go
+	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME_GCE)  plugin/builder-googlecompute/main.go
+
+build-mock: build-mock-aws build-mock-gce
 
 install-mock: build-mock
-	cp build/$(OSNAME)/$(MOCK_BINARY_NAME) ~/.packer.d/plugins/$(MOCK_BINARY_NAME)
+	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_AWS) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_AWS)
+	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_AWS) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_AWS)
 
-gh-release: #build-mock
+gh-release-prepare: build-mock
 	rm -rf release; mkdir -p release
+	tar czvf release/$(MOCK_BINARY_NAME_AWS)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME_AWS)
+	tar czvf release/$(MOCK_BINARY_NAME_AWS)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME_AWS)
+	tar czvf release/$(MOCK_BINARY_NAME_GCE)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME_GCE)
+	tar czvf release/$(MOCK_BINARY_NAME_GCE)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME_GCE)
 
-	#cp build/Darwin/$(MOCK_BINARY_NAME) release/$(MOCK_BINARY_NAME)-Darwin
-	#cp build/Linux/$(MOCK_BINARY_NAME) release/$(MOCK_BINARY_NAME)-Linux
-
-	tar czvf release/$(MOCK_BINARY_NAME)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME)
-	tar czvf release/$(MOCK_BINARY_NAME)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME)
-
+gh-release: gh-release-prepare
 	gh-release create sequenceiq/packer $(MOCKVERSION)
 	
 test: deps
