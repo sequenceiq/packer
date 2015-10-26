@@ -7,18 +7,18 @@ import (
 	"github.com/mitchellh/packer/packer"
 )
 
-type stepCreateAMIFake struct {
+type stepCreateAMIMock struct {
 	AmiRegions []string
 	AmiName    string
 	Region     string
 }
 
-func (s *stepCreateAMIFake) Run(state multistep.StateBag) multistep.StepAction {
+func (s *stepCreateAMIMock) Run(state multistep.StateBag) multistep.StepAction {
 	config := state.Get("config").(Config)
 	ui := state.Get("ui").(packer.Ui)
 
 	// Create the image
-	ui.Say(fmt.Sprintf("FAKE-STEP Creating the AMI: %s", config.AMIName))
+	ui.Say(fmt.Sprintf("MOCK-STEP Creating the AMI: %s", config.AMIName))
 
 	amis := map[string]string{
 		s.Region: "ami-123456",
@@ -31,9 +31,7 @@ func (s *stepCreateAMIFake) Run(state multistep.StateBag) multistep.StepAction {
 	return multistep.ActionContinue
 }
 
-func (s *stepCreateAMIFake) Cleanup(state multistep.StateBag) {
+func (s *stepCreateAMIMock) Cleanup(state multistep.StateBag) {
 	ui := state.Get("ui").(packer.Ui)
-
-	ui.Say(fmt.Sprintf("FAKE-STEP Cleanup(): nothing todo ..."))
-
+	ui.Say(fmt.Sprintf("MOCK-STEP Cleanup(): nothing todo ..."))
 }

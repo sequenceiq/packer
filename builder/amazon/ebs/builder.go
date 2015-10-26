@@ -8,6 +8,7 @@ package ebs
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/mitchellh/multistep"
@@ -29,14 +30,24 @@ type Config struct {
 	awscommon.BlockDevices `mapstructure:",squash"`
 	awscommon.RunConfig    `mapstructure:",squash"`
 
-	Mock string `mapstructure:"mock"`
-
 	ctx interpolate.Context
 }
 
 type Builder struct {
 	config Config
 	runner multistep.Runner
+}
+
+func (b *Builder) isMocking() bool {
+
+	mocking := b.config.PackerUserVars["mock"] == "true"
+
+	if strings.Contains(b.config.PackerBuilderType, "mock") {
+		mocking = b.config.PackerUserVars["mock"] != "false"
+	}
+
+	log.Println("isMocking(): ", mocking)
+	return mocking
 }
 
 func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
@@ -49,9 +60,8 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 		return nil, err
 	}
 
-	if b.config.Mock != "" {
-		log.Println("#####################################")
-		log.Println(" MOCKED AWS BUILDER")
+	if b.isMocking() {
+		log.Println(" MOCKED AWS BUILDER ...")
 	} else {
 		// Accumulate any errors
 		var errs *packer.MultiError
@@ -84,14 +94,12 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	state.Put("hook", hook)
 	state.Put("ui", ui)
 
-	ui.Say(fmt.Sprintf("MOCK checking mock config: %s", b.config.Mock))
-
-	if b.config.Mock != "" {
+	if b.isMocking() {
 		ui.Say("MOCKING AWS ...")
 
 		// Build the steps
 		steps := []multistep.Step{
-			&stepCreateAMIFake{
+			&stepCreateAMIMock{
 				AmiRegions: b.config.AMIRegions,
 				AmiName:    b.config.AMIName,
 				Region:     b.config.RawRegion,

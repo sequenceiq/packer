@@ -4,7 +4,7 @@ GITSHA:=$(shell git rev-parse HEAD)
 # Get the current local branch name from git (if we can, this may be blank)
 GITBRANCH:=$(shell git symbolic-ref --short HEAD 2>/dev/null)
 
-MOCK_BINARY_NAME=packer-builder-amazon-ebs-mock
+MOCK_BINARY_NAME=packer-builder-amazon-ebsmock
 
 default: test dev
 
