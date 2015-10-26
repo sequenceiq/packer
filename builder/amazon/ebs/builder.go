@@ -94,11 +94,12 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	state.Put("hook", hook)
 	state.Put("ui", ui)
 
+	var steps []multistep.Step
 	if b.isMocking() {
 		ui.Say("MOCKING AWS ...")
 
 		// Build the steps
-		steps := []multistep.Step{
+		steps = []multistep.Step{
 			&stepCreateAMIMock{
 				AmiRegions: b.config.AMIRegions,
 				AmiName:    b.config.AMIName,
@@ -106,20 +107,10 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 			},
 		}
 
-		// Run!
-		if b.config.PackerDebug {
-			b.runner = &multistep.DebugRunner{
-				Steps:   steps,
-				PauseFn: common.MultistepDebugFn(ui),
-			}
-		} else {
-			b.runner = &multistep.BasicRunner{Steps: steps}
-		}
-
 	} else {
 
 		// Build the steps
-		steps := []multistep.Step{
+		steps = []multistep.Step{
 			&awscommon.StepPreValidate{
 				DestAmiName:     b.config.AMIName,
 				ForceDeregister: b.config.AMIForceDeregister,
@@ -195,16 +186,15 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 				Tags: b.config.AMITags,
 			},
 		}
-
-		// Run!
-		if b.config.PackerDebug {
-			b.runner = &multistep.DebugRunner{
-				Steps:   steps,
-				PauseFn: common.MultistepDebugFn(ui),
-			}
-		} else {
-			b.runner = &multistep.BasicRunner{Steps: steps}
+	}
+	// Run!
+	if b.config.PackerDebug {
+		b.runner = &multistep.DebugRunner{
+			Steps:   steps,
+			PauseFn: common.MultistepDebugFn(ui),
 		}
+	} else {
+		b.runner = &multistep.BasicRunner{Steps: steps}
 	}
 
 	b.runner.Run(state)
