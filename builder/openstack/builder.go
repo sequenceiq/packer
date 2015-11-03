@@ -6,6 +6,7 @@ package openstack
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/mitchellh/multistep"
 	"github.com/mitchellh/packer/common"
@@ -33,7 +34,19 @@ type Builder struct {
 	runner multistep.Runner
 }
 
+func (b *Builder) isMocking() bool {
+	mocking := b.config.PackerUserVars["mock"] == "true"
+
+	if strings.Contains(b.config.PackerBuilderType, "mock") {
+		mocking = b.config.PackerUserVars["mock"] != "false"
+	}
+
+	log.Println("isMocking(): ", mocking)
+	return mocking
+}
+
 func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
+	log.Println("[DEBUG]: debug ...")
 	err := config.Decode(&b.config, &config.DecodeOpts{
 		Interpolate:        true,
 		InterpolateContext: &b.config.ctx,
@@ -45,8 +58,11 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 	// Accumulate any errors
 	var errs *packer.MultiError
 	errs = packer.MultiErrorAppend(errs, b.config.AccessConfig.Prepare(&b.config.ctx)...)
+	log.Println("MOCK err:", len(errs.Errors))
 	errs = packer.MultiErrorAppend(errs, b.config.ImageConfig.Prepare(&b.config.ctx)...)
+	log.Println("MOCK err:", len(errs.Errors))
 	errs = packer.MultiErrorAppend(errs, b.config.RunConfig.Prepare(&b.config.ctx)...)
+	log.Println("MOCK err:", len(errs.Errors))
 
 	if errs != nil && len(errs.Errors) > 0 {
 		return nil, errs
@@ -69,43 +85,52 @@ func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packe
 	state.Put("ui", ui)
 
 	// Build the steps
-	steps := []multistep.Step{
-		&StepLoadExtensions{},
-		&StepLoadFlavor{
-			Flavor: b.config.Flavor,
-		},
-		&StepKeyPair{
-			Debug:          b.config.PackerDebug,
-			DebugKeyPath:   fmt.Sprintf("os_%s.pem", b.config.PackerBuildName),
-			KeyPairName:    b.config.SSHKeyPairName,
-			PrivateKeyFile: b.config.RunConfig.Comm.SSHPrivateKey,
-		},
-		&StepRunSourceServer{
-			Name:             b.config.ImageName,
-			SourceImage:      b.config.SourceImage,
-			SecurityGroups:   b.config.SecurityGroups,
-			Networks:         b.config.Networks,
-			AvailabilityZone: b.config.AvailabilityZone,
-			UserData:         b.config.UserData,
-			UserDataFile:     b.config.UserDataFile,
-		},
-		&StepWaitForRackConnect{
-			Wait: b.config.RackconnectWait,
-		},
-		&StepAllocateIp{
-			FloatingIpPool: b.config.FloatingIpPool,
-			FloatingIp:     b.config.FloatingIp,
-		},
-		&communicator.StepConnect{
-			Config: &b.config.RunConfig.Comm,
-			Host: CommHost(
-				computeClient,
-				b.config.SSHInterface),
-			SSHConfig: SSHConfig(b.config.RunConfig.Comm.SSHUsername),
-		},
-		&common.StepProvision{},
-		&StepStopServer{},
-		&stepCreateImage{},
+	var steps []multistep.Step
+	if b.isMocking() {
+		log.Println(" MOCKED GOOGLE BUILDER ...")
+		steps = []multistep.Step{
+			new(stepCreateImageMock),
+		}
+	} else {
+
+		steps = []multistep.Step{
+			&StepLoadExtensions{},
+			&StepLoadFlavor{
+				Flavor: b.config.Flavor,
+			},
+			&StepKeyPair{
+				Debug:          b.config.PackerDebug,
+				DebugKeyPath:   fmt.Sprintf("os_%s.pem", b.config.PackerBuildName),
+				KeyPairName:    b.config.SSHKeyPairName,
+				PrivateKeyFile: b.config.RunConfig.Comm.SSHPrivateKey,
+			},
+			&StepRunSourceServer{
+				Name:             b.config.ImageName,
+				SourceImage:      b.config.SourceImage,
+				SecurityGroups:   b.config.SecurityGroups,
+				Networks:         b.config.Networks,
+				AvailabilityZone: b.config.AvailabilityZone,
+				UserData:         b.config.UserData,
+				UserDataFile:     b.config.UserDataFile,
+			},
+			&StepWaitForRackConnect{
+				Wait: b.config.RackconnectWait,
+			},
+			&StepAllocateIp{
+				FloatingIpPool: b.config.FloatingIpPool,
+				FloatingIp:     b.config.FloatingIp,
+			},
+			&communicator.StepConnect{
+				Config: &b.config.RunConfig.Comm,
+				Host: CommHost(
+					computeClient,
+					b.config.SSHInterface),
+				SSHConfig: SSHConfig(b.config.RunConfig.Comm.SSHUsername),
+			},
+			&common.StepProvision{},
+			&StepStopServer{},
+			&stepCreateImage{},
+		}
 	}
 
 	// Run!

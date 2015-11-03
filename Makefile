@@ -6,6 +6,7 @@ GITBRANCH:=$(shell git symbolic-ref --short HEAD 2>/dev/null)
 
 MOCK_BINARY_NAME_AWS=packer-builder-amazon-ebs
 MOCK_BINARY_NAME_GCE=packer-builder-googlecompute
+MOCK_BINARY_NAME_OPENSTACK=packer-builder-openstack
 
 default: test dev
 
@@ -50,11 +51,17 @@ build-mock-gce:
 	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME_GCE)  plugin/builder-googlecompute/main.go
 	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME_GCE)  plugin/builder-googlecompute/main.go
 
-build-mock: build-mock-aws build-mock-gce
+
+build-mock-openstack:
+	GOOS=linux go build -o build/Linux/$(MOCK_BINARY_NAME_OPENSTACK)  plugin/builder-openstack/main.go
+	GOOS=darwin go build -o build/Darwin/$(MOCK_BINARY_NAME_OPENSTACK)  plugin/builder-openstack/main.go
+
+build-mock: build-mock-aws build-mock-gce build-mock-openstack
 
 install-mock: build-mock
 	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_AWS) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_AWS)
-	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_AWS) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_AWS)
+	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_GCE) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_GCE)
+	cp build/$(OSNAME)/$(MOCK_BINARY_NAME_OPENSTACK) ~/.packer.d/plugins/$(MOCK_BINARY_NAME_OPENSTACK)
 
 gh-release-prepare: build-mock
 	rm -rf release; mkdir -p release
@@ -62,6 +69,8 @@ gh-release-prepare: build-mock
 	tar czvf release/$(MOCK_BINARY_NAME_AWS)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME_AWS)
 	tar czvf release/$(MOCK_BINARY_NAME_GCE)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME_GCE)
 	tar czvf release/$(MOCK_BINARY_NAME_GCE)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME_GCE)
+	tar czvf release/$(MOCK_BINARY_NAME_OPENSTACK)-Darwin.tgz -C build/Darwin/ $(MOCK_BINARY_NAME_OPENSTACK)
+	tar czvf release/$(MOCK_BINARY_NAME_OPENSTACK)-Linux.tgz -C build/Linux/ $(MOCK_BINARY_NAME_OPENSTACK)
 
 gh-release: gh-release-prepare
 	gh-release create sequenceiq/packer $(MOCKVERSION)
