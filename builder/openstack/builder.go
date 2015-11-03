@@ -14,6 +14,7 @@ import (
 	"github.com/mitchellh/packer/helper/config"
 	"github.com/mitchellh/packer/packer"
 	"github.com/mitchellh/packer/template/interpolate"
+	"github.com/rackspace/gophercloud"
 )
 
 // The unique ID for this builder
@@ -46,7 +47,6 @@ func (b *Builder) isMocking() bool {
 }
 
 func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
-	log.Println("[DEBUG]: debug ...")
 	err := config.Decode(&b.config, &config.DecodeOpts{
 		Interpolate:        true,
 		InterpolateContext: &b.config.ctx,
@@ -55,27 +55,31 @@ func (b *Builder) Prepare(raws ...interface{}) ([]string, error) {
 		return nil, err
 	}
 
-	// Accumulate any errors
-	var errs *packer.MultiError
-	errs = packer.MultiErrorAppend(errs, b.config.AccessConfig.Prepare(&b.config.ctx)...)
-	log.Println("MOCK err:", len(errs.Errors))
-	errs = packer.MultiErrorAppend(errs, b.config.ImageConfig.Prepare(&b.config.ctx)...)
-	log.Println("MOCK err:", len(errs.Errors))
-	errs = packer.MultiErrorAppend(errs, b.config.RunConfig.Prepare(&b.config.ctx)...)
-	log.Println("MOCK err:", len(errs.Errors))
+	if !b.isMocking() {
+		// Accumulate any errors
+		var errs *packer.MultiError
+		errs = packer.MultiErrorAppend(errs, b.config.AccessConfig.Prepare(&b.config.ctx)...)
+		errs = packer.MultiErrorAppend(errs, b.config.ImageConfig.Prepare(&b.config.ctx)...)
+		errs = packer.MultiErrorAppend(errs, b.config.RunConfig.Prepare(&b.config.ctx)...)
 
-	if errs != nil && len(errs.Errors) > 0 {
-		return nil, errs
+		if errs != nil && len(errs.Errors) > 0 {
+			return nil, errs
+		}
+
+		log.Println(common.ScrubConfig(b.config, b.config.Password))
 	}
-
-	log.Println(common.ScrubConfig(b.config, b.config.Password))
 	return nil, nil
 }
 
 func (b *Builder) Run(ui packer.Ui, hook packer.Hook, cache packer.Cache) (packer.Artifact, error) {
-	computeClient, err := b.config.computeV2Client()
-	if err != nil {
-		return nil, fmt.Errorf("Error initializing compute client: %s", err)
+
+	var computeClient *gophercloud.ServiceClient
+	var err error
+	if !b.isMocking() {
+		computeClient, err = b.config.computeV2Client()
+		if err != nil {
+			return nil, fmt.Errorf("Error initializing compute client: %s", err)
+		}
 	}
 
 	// Setup the state bag and initial state for the steps
